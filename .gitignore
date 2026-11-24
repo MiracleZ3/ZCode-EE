@@ -78,3 +78,8 @@ __pycache__/
 
 # CR-01：afterPack 生成的 NSIS helper define，按架构命名，不得入库
 packages/desktop/build/generated/
+
+# 企业版（2026-11-24）：adapters 包的整组测试里有用相对路径建库的会话库迁移，备份落在包目录的
+# backup/ 下且测试结束不清理（迁移把备份写到数据库所在目录的 backup/）。上游测试隔离不严，
+# 这里只防止它被 git add -A 误提交，不改动测试本身。
+apps/zcode-cli/packages/adapters/backup/

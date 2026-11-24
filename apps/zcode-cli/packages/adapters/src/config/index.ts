@@ -482,8 +482,13 @@ export {
   type UiLocalePatchResult,
 } from "./file-config.adapter.js";
 export { parseEnvConfig, getToolConcurrencyConfig } from "./env-config.adapter.js";
-export { ZCodeConfigFileSchema, type ZCodeConfigFile } from "./schema.js";
+export { ZCodeConfigFileSchema, ManagedPolicyFileSchema, type ZCodeConfigFile } from "./schema.js";
 export { mergeConfigs, createPrioritizedConfig, getScopePriority } from "./config-merger.js";
+export {
+  readManagedConfig,
+  getDefaultManagedConfigPath,
+  type ManagedConfigState,
+} from "./managed-config.adapter.js";
 export {
   classifyLocalSessionDirectory,
   createConfig,

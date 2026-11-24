@@ -41,6 +41,7 @@ import {
 } from "./file-config.adapter.js";
 import { parseEnvConfig } from "./env-config.adapter.js";
 import { mergeConfigs, createPrioritizedConfig } from "./config-merger.js";
+import { readManagedConfig, type ManagedConfigState } from "./managed-config.adapter.js";
 import { createNodeLoggerFactory } from "../logging/index.js";
 import {
   loadProjectConfigFile,
@@ -67,8 +68,13 @@ export interface ConfigFactoryOptions {
   workspaceHookTrustIdentity?: string;
   /** Environment variables (default: process.env) */
   env?: Record<string, string | undefined>;
-  /** CLI overrides (highest priority) */
+  /** CLI overrides (highest priority among user-controlled sources) */
   cliOverrides?: RuntimeConfigPatch;
+  /**
+   * 企业版受管策略文件（T1）的路径。缺省时读系统级的管理员位置，见 managed-config.adapter.ts。
+   * 只供测试、嵌入方和宿主进程指定；不开放给环境变量或命令行。
+   */
+  managedConfigPath?: string;
   /** Skip loading user config file */
   skipUserConfig?: boolean;
   /** Optional logger factory for tests or embedding runtimes. Defaults to the node JSONL logger. */
@@ -116,6 +122,11 @@ export interface ConfigResult {
     env: boolean;
     cli: boolean;
   };
+  /**
+   * 企业版受管来源（T1）。受管的键走各自的通道，不并进上面合并后的 `config`：
+   * 消费方从这里读取。没有受管文件时不存在对行为任何影响。
+   */
+  managed: ManagedConfigState;
 }
 
 type OptionalPathLoadedConfig = Omit<LoadedConfig, "path"> & {
@@ -230,6 +241,9 @@ export async function createConfigWithPluginMigrations(
  * 3. Project config files (root to cwd, then explicit projectConfigPath)
  * 4. Environment variables (ZCODE_*)
  * 5. CLI overrides
+ *
+ * 企业版受管策略文件（T1）不在这条合并链上：它的键走各自的通道，放在返回值的 `managed` 里，
+ * 高于以上全部来源。没有受管文件时它不存在。
  */
 export function createConfig(options: ConfigFactoryOptions = {}): ConfigResult {
   return assembleConfig(options, loadConfigSources(options));
@@ -241,6 +255,8 @@ function assembleConfig(
   workspaceHookScriptStates?: ReadonlyMap<string, WorkspaceHookScriptState>,
 ): ConfigResult {
   const { userConfigResult, discoveredProjectConfigs } = sources;
+  const managed = readManagedConfig({ managedConfigPath: options.managedConfigPath });
+  logManagedConfigState(managed, options);
   // 1. System defaults
   const configs: ReturnType<typeof createPrioritizedConfig>[] = [
     createPrioritizedConfig(DefaultRuntimeConfig, ConfigScope.System),
@@ -393,7 +409,38 @@ function assembleConfig(
       env: Object.keys(envConfig).length > 0,
       cli: !!options.cliOverrides,
     },
+    managed,
   };
+}
+
+/**
+ * 受管文件的告警（T1）。无效与含未知键都要让管理员在日志里看得到：
+ * createConfig 的大量调用方并不消费受管来源，拒绝启动与否是创建应用那一步决定的。
+ */
+function logManagedConfigState(managed: ManagedConfigState, options: ConfigFactoryOptions): void {
+  if (managed.status === "invalid") {
+    const loggerFactory = options.loggerFactory ?? createNodeLoggerFactory({ env: options.env });
+    loggerFactory.createLogger("zcode").child({ module: "adapters.config" }).warn(
+      "Managed policy file is invalid",
+      {
+        event: "config.managed_policy.invalid",
+        configPath: managed.path,
+        reason: managed.reason,
+      },
+    );
+    return;
+  }
+  if (managed.status === "active" && managed.unknownKeys.length > 0) {
+    const loggerFactory = options.loggerFactory ?? createNodeLoggerFactory({ env: options.env });
+    loggerFactory.createLogger("zcode").child({ module: "adapters.config" }).warn(
+      "Managed policy file has unknown keys",
+      {
+        event: "config.managed_policy.unknown_keys",
+        configPath: managed.path,
+        unknownKeys: [...managed.unknownKeys],
+      },
+    );
+  }
 }
 
 function resolvePluginConfigSources(input: {

@@ -248,6 +248,11 @@ export interface ZCodeAppOptions {
   projectConfigPath?: string;
   skipUserConfig?: boolean;
   userConfigPath?: string;
+  /**
+   * 企业版受管策略文件的路径（改造点 T1）。缺省时读系统级的管理员位置。
+   * 只供测试、嵌入方与宿主进程指定；不开放给环境变量或命令行参数。
+   */
+  managedConfigPath?: string;
   uiDetectedLocale?: string | null;
   uiLocale?: UiLocale;
   onWorkflowEvent?: (event: WorkflowEvent) => void | Promise<void>;

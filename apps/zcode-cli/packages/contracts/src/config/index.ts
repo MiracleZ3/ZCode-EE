@@ -161,6 +161,12 @@ export const ConfigScope = {
   Session: "session",
   Env: "env",
   Cli: "cli",
+  /**
+   * 企业版受管策略（T1）。由管理员下发、用户不可改写，高于一切用户可控的来源。
+   * 它不参与 mergeConfigs 的整段替换：受管的键由各自的通道消费，见
+   * docs/design/v2/enterprise-managed-policy.md。没有受管文件时该来源不存在。
+   */
+  Managed: "managed",
 } as const;
 
 export type ConfigScope = (typeof ConfigScope)[keyof typeof ConfigScope];
@@ -172,7 +178,31 @@ export const ConfigScopePriority: Record<ConfigScope, number> = {
   [ConfigScope.Session]: 30,
   [ConfigScope.Env]: 40,
   [ConfigScope.Cli]: 50,
+  [ConfigScope.Managed]: 100,
 };
+
+// ============================================================
+// Managed Policy（企业受管策略，T1）
+// ============================================================
+
+/** 受管文件的结构版本。目前只接受这一个值。 */
+export const MANAGED_POLICY_VERSION = 1;
+
+/**
+ * 校验后的受管策略。它的每一项都只会收紧、不会放开。
+ * 两段都可以缺省：缺省表示该方面不受限制。
+ */
+export interface ManagedPolicy {
+  permission: {
+    /** 按工具名整工具禁用。先于一切模式放行与规则判定，结果是拒绝。 */
+    disallowedTools: readonly string[];
+    /**
+     * 允许的权限模式。缺省表示不受限制。
+     * 不在列表里的模式在权限判定时按回退模式处理；这是改造点 T3 的内容。
+     */
+    allowedModes?: readonly CollaborationMode[];
+  };
+}
 
 // ============================================================
 // Config Source

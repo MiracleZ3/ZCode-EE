@@ -174,6 +174,30 @@ export function resolveAppRuntimeConfig(input: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// 企业受管策略（改造点 T1）。规格见 docs/design/v2/enterprise-managed-policy.md。
+// ---------------------------------------------------------------------------
+
+/**
+ * 受管文件无效时拒绝启动。
+ *
+ * 现有各配置来源的惯例是“解析失败就跳过”，对管理员的策略文件这等于失败即放开：
+ * 坏掉一个字符，全员的不受限模式就回来了。所以在创建应用这一步明确地停下来，
+ * 并把路径与原因原样带给调用方。createConfig 自己不抛错——它有三十多处调用，很多只取别的值。
+ */
+export function assertManagedPolicyUsable(managed: ConfigResult["managed"]): void {
+  if (managed.status === "invalid") {
+    throw new Error(
+      [
+        "ZCode cannot start because the managed policy file is invalid.",
+        `File: ${managed.path}`,
+        `Reason: ${managed.reason}`,
+        "Ask your administrator to fix the file.",
+      ].join("\n"),
+    );
+  }
+}
+
 function withHookConfigSource(
   config: HooksRuntimeConfig,
   source: HookConfigSource,

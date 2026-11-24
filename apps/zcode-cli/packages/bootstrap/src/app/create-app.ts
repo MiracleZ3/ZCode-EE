@@ -93,7 +93,11 @@ import { createPluginFacadeForApp } from "./plugin-facade.js";
 import { resolvePluginRuntimeFeatures } from "./plugin-runtime-features.js";
 import { OFFICIAL_VISUALIZE_PLUGIN_ID } from "./official-plugin-definitions.js";
 import { createSessionFacade } from "./session-facade.js";
-import { resolveAppRuntimeConfig, runtimeConfigLogContext } from "./runtime-config.js";
+import {
+  assertManagedPolicyUsable,
+  resolveAppRuntimeConfig,
+  runtimeConfigLogContext,
+} from "./runtime-config.js";
 import { resolveBundledSkillRoots } from "./bundled-skills.js";
 import { resolveMcpNodeFallbackProvider } from "./mcp-node-fallback.js";
 import { createWorkspaceHookRuntimeSecurity } from "./workspace-hook-trust.js";
@@ -207,10 +211,14 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       workspaceHookTrustIdentity,
       skipUserConfig: options.skipUserConfig,
       userConfigPath: options.userConfigPath,
+      managedConfigPath: options.managedConfigPath,
       cliOverrides: createConfigCliOverrides(options),
     }),
     options,
   );
+  // 企业受管策略（T1）：受管文件无效时在这里拒绝启动，而不是带着放开的状态跑起来。
+  // 必须排在任何会话、模型或存储被初始化之前。见 docs/design/v2/enterprise-managed-policy.md。
+  assertManagedPolicyUsable(configResult.managed);
   const loggerFactory = options.loggerFactory ?? createNodeLoggerFactory({ env: options.env });
   const logger = loggerFactory.createLogger("zcode").child({
     ...traceContextToLogContext(traceContext),

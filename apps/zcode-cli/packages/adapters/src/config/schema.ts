@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- zcode-cli 配置 schema 需要集中维护文件解析和 provider 继承，拆散会让配置语义更难对齐。 */
 import { z } from "zod";
-import type { RuntimeConfigPatch } from "@zcode/contracts";
+import { MANAGED_POLICY_VERSION, type RuntimeConfigPatch } from "@zcode/contracts";
 
 const stringRecordSchema = z.record(z.string(), z.string());
 const unknownRecordSchema = z.record(z.string(), z.unknown());
@@ -16,6 +16,34 @@ const permissionSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   autoApproveHighRisk: z.boolean().optional(),
   allowMediumRiskInAuto: z.boolean().optional(),
+});
+
+// 企业版受管策略文件（改造点 T1）。规格见 docs/design/v2/enterprise-managed-policy.md。
+// 与其他配置来源不同，这是管理员的文件：校验失败不会被静默跳过，而是让应用拒绝启动，
+// 所以每条校验都给出可以直接展示给管理员的原因。未知的键由读取方另行报出，schema 不拒绝它们。
+const MANAGED_POLICY_TOOL_NAME_MAX_LENGTH = 128;
+const managedPolicyToolNameSchema = z
+  .string()
+  .trim()
+  .min(1, "must be a non-empty tool name")
+  .max(MANAGED_POLICY_TOOL_NAME_MAX_LENGTH, "is too long for a tool name")
+  .refine(
+    (value) => !/[\s()]/.test(value),
+    "is not a tool name: content rules such as Bash(git:*) are not supported here",
+  );
+
+export const ManagedPolicyFileSchema = z.object({
+  version: z.literal(MANAGED_POLICY_VERSION, { error: `must be ${MANAGED_POLICY_VERSION}` }),
+  permission: z
+    .object({
+      disallowedTools: z.array(managedPolicyToolNameSchema).optional(),
+      // auto 尚未实现，任何策略都不能允许它，所以不出现在取值里。
+      allowedModes: z
+        .array(z.enum(["plan", "build", "edit", "guarded", "yolo"], { error: "is not a supported permission mode" }))
+        .min(1, "must list at least one mode")
+        .optional(),
+    })
+    .optional(),
 });
 
 const storageSchema = z.object({

@@ -1,6 +1,7 @@
 import type { TuiReadClipboardImage, TuiWriteClipboardText } from "@zcode/tui";
 import type { UiLocale } from "@zcode/i18n";
 import type { Logger } from "@zcode/contracts";
+import type { ManagedConfigState } from "@zcode/adapters/config";
 import type {
   createManagedCdpBrowserRuntime,
   ManagedCdpBrowserRuntimeOptions,
@@ -73,6 +74,11 @@ export interface RunDependencies extends PluginsCommandOverrides {
   mapSessionEvent?: BootstrapModule["mapSessionEvent"];
   cwd?: () => string;
   env?: CliEnv;
+  /**
+   * 企业受管策略的读取（改造点 T3）。缺省读取系统级的管理员文件；测试经此注入替身。
+   * 它只是程序内的注入点，不是给用户的配置入口：没有对应的环境变量或命令行参数。
+   */
+  readManagedConfig?: () => ManagedConfigState;
   inspectSkill?: (options: InspectZCodeSkillOptions) => ReturnType<typeof inspectZCodeSkill>;
   inspectWorkspaceHookTrust?: typeof inspectWorkspaceHookTrust;
   grantWorkspaceHookTrust?: typeof grantWorkspaceHookTrust;

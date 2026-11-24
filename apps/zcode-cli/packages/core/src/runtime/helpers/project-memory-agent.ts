@@ -12,7 +12,6 @@ import {
   PermissionService,
   createDenyPermissionBroker,
   createToolExecutor,
-  defaultPermissionConfig,
   traceContextToLogContext,
 } from "../deps.js";
 import type { RuntimeMessageEntry } from "../../agent/message-history.js";
@@ -162,7 +161,11 @@ function createProjectMemoryAgentToolExecutor(
     maxConcurrency: runtime.config.toolConcurrency?.maxConcurrency,
     model: context.model,
     permissionBroker: createDenyPermissionBroker(),
-    permissionService: new PermissionService(defaultPermissionConfig),
+    // 改造点 T3：这个代理固定以 yolo 运行，今天用的是不带任何限制的默认权限配置，
+    // 管理员下发的受管策略对它完全不生效，会成为一个绕过组织策略的执行通道。
+    // 它沿用主运行时的受管约束；主会话的普通名单照旧不带过来（那是上游既有的行为）。
+    // 规格：docs/design/v2/enterprise-managed-policy.md。
+    permissionService: new PermissionService(runtime.permissionService.managedOnlyConfig()),
     // Memory agent 必须继承 Main 已完成的 Read；否则 provider context 说文件已读，
     // Edit 执行边界却会拒绝同一文件，和基线的 cloned tool context 不一致。
     readFileState: new Map(context.readFileState),

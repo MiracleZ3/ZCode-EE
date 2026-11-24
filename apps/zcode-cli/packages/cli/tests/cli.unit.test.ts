@@ -5945,6 +5945,67 @@ test("rejects unsupported prompt mode", async () => {
   assert.equal(ctx.stdout.output(), "");
 });
 
+// 企业受管策略（改造点 T3）对 CLI 参数的约束。规格见 docs/design/v2/enterprise-managed-policy.md。
+
+/** 受管策略的替身：禁掉 yolo 与 guarded，其余不限制。 */
+const forbidsRelaxedModes = (): NonNullable<RunDependencies["readManagedConfig"]> => () => ({
+  status: "active",
+  path: "/etc/zcode/managed-config.json",
+  policy: { permission: { disallowedTools: [], allowedModes: ["build", "plan"] } },
+  unknownKeys: [],
+});
+
+const noManagedPolicy = (): NonNullable<RunDependencies["readManagedConfig"]> => () => ({
+  status: "absent",
+});
+
+test("rejects an explicitly requested prompt mode the managed policy forbids", async () => {
+  const ctx = createContext(["--prompt", "hello mode", "--mode", "yolo"]);
+  const exitCode = await run(ctx, {
+    ...createPromptDeps(),
+    readManagedConfig: forbidsRelaxedModes(),
+  });
+
+  assert.equal(exitCode, 1);
+  assert.match(ctx.stderr.output(), /--mode yolo .*managed policy/);
+  assert.match(ctx.stderr.output(), /Allowed modes: build, plan/);
+  assert.equal(ctx.stdout.output(), "");
+});
+
+test("rejects the default prompt mode when the managed policy forbids it, instead of switching modes", async () => {
+  const ctx = createContext(["--prompt", "hello default"]);
+  const exitCode = await run(ctx, {
+    ...createPromptDeps(),
+    readManagedConfig: forbidsRelaxedModes(),
+  });
+
+  assert.equal(exitCode, 1);
+  assert.match(ctx.stderr.output(), /--prompt runs in yolo mode by default/);
+  assert.match(ctx.stderr.output(), /--mode with one of: build, plan/);
+  assert.equal(ctx.stdout.output(), "");
+});
+
+test("a managed policy that allows the mode changes nothing about the prompt run", async () => {
+  const argv = ["--prompt", "hello allowed", "--mode", "plan"];
+  const withPolicy = createContext(argv);
+  const withoutPolicy = createContext(argv);
+
+  const exitWithPolicy = await run(withPolicy, {
+    ...createPromptDeps(),
+    readManagedConfig: forbidsRelaxedModes(),
+  });
+  const exitWithoutPolicy = await run(withoutPolicy, {
+    ...createPromptDeps(),
+    readManagedConfig: noManagedPolicy(),
+  });
+
+  // 对照：同一条命令在“有策略但允许该模式”与“没有策略”下输出完全相同。
+  assert.notEqual(exitWithoutPolicy, 1);
+  assert.equal(exitWithPolicy, exitWithoutPolicy);
+  assert.equal(withPolicy.stdout.output(), withoutPolicy.stdout.output());
+  assert.equal(withPolicy.stderr.output(), withoutPolicy.stderr.output());
+});
+
 test("prints JSON for prompt command", async () => {
   const ctx = createContext(["--prompt", "hello json", "--json"]);
   const exitCode = await run(ctx, createPromptDeps());

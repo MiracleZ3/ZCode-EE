@@ -95,6 +95,7 @@ import { OFFICIAL_VISUALIZE_PLUGIN_ID } from "./official-plugin-definitions.js";
 import { createSessionFacade } from "./session-facade.js";
 import {
   assertManagedPolicyUsable,
+  managedPermissionFields,
   resolveAppRuntimeConfig,
   runtimeConfigLogContext,
 } from "./runtime-config.js";
@@ -539,6 +540,8 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       autoApproveHighRisk: configResult.config.permission.autoApproveHighRisk,
       disallowedTools: new Set(configResult.config.permission.disallowedTools),
       allowMediumRiskInAutoMode: configResult.config.permission.allowMediumRiskInAuto,
+      // 企业受管策略（T3）：走单独的通道，不与上面的普通名单混在一起。
+      ...managedPermissionFields(configResult.managed),
     });
     const inputHistoryStore = options.inputHistoryStore ?? asInputHistoryStore(sessionStore);
     const artifactStore =

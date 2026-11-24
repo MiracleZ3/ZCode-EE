@@ -61,6 +61,28 @@ export function restrictPermissionMode(
   const childRank = PERMISSION_MODE_STRICTNESS.indexOf(child);
   return parentRank >= 0 && childRank >= 0 && childRank < parentRank ? child : parent;
 }
+
+/**
+ * 企业受管策略（T3）下，一个被请求的模式在判定时实际按哪个模式处理。
+ *
+ * 策略不限制模式时原样返回。被请求的模式不在允许列表里时，回退到 build（若它被允许）；
+ * 否则回退到允许列表里最严格的那个。build 是产品的默认模式，回退到它最不容易让人意外。
+ *
+ * 启动处与权限判定共用这一条规则，不各写一遍。规格见
+ * docs/design/v2/enterprise-managed-policy.md。
+ */
+export function resolveManagedPermissionMode(
+  requested: CollaborationMode,
+  allowedModes: readonly CollaborationMode[] | undefined,
+): CollaborationMode {
+  if (!allowedModes || allowedModes.length === 0) return requested;
+  if (allowedModes.includes(requested)) return requested;
+  if (allowedModes.includes("build")) return "build";
+  for (const mode of PERMISSION_MODE_STRICTNESS) {
+    if (allowedModes.includes(mode)) return mode;
+  }
+  return requested;
+}
 export type SessionStatus = "idle" | "running" | "waiting" | "paused" | "completed" | "error";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type InputDelivery = "auto" | "start_turn" | "steer_active_turn";

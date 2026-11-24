@@ -165,6 +165,27 @@ const normalizePromptMode = (value: string | undefined): CliPermissionMode | und
   );
 };
 
+/**
+ * 企业受管策略（改造点 T3）对一个模式的态度：被允许时返回 undefined，否则返回允许的模式列表。
+ * 规格：docs/design/v2/enterprise-managed-policy.md。
+ *
+ * 这里只负责命令行参数这一层的反馈。真正的执行点在 core 的权限判定：会话即便处在不被允许的
+ * 模式里，每一次工具调用也按回退模式判定。受管文件无效时这里不拦，由创建应用那一步
+ * 带着完整的路径与原因拒绝启动，免得同一件事报出两种说法。
+ */
+const allowedModesWhenManagedForbids = async (
+  mode: CliPermissionMode,
+  deps: RunDependencies,
+): Promise<readonly string[] | undefined> => {
+  const readManagedConfig =
+    deps.readManagedConfig ?? (await import("@zcode/adapters/config")).readManagedConfig;
+  const managed = readManagedConfig();
+  if (managed.status !== "active") return undefined;
+  const allowed = managed.policy.permission.allowedModes;
+  if (!allowed || allowed.length === 0 || allowed.includes(mode)) return undefined;
+  return allowed;
+};
+
 const normalizeBrowserUse = (value: string | undefined): GlobalOptions["browserUse"] => {
   if (value === undefined) return undefined;
   if (value.toLowerCase() === "headless") return "headless";
@@ -403,6 +424,16 @@ export const run = async (ctx: RunContext, deps: RunDependencies = {}): Promise<
     ctx.stderr.write(`${message}\n`);
     return 1;
   }
+  // 企业受管策略（T3）：显式给出的 --mode 不被允许时在这里退出，不带着它往下走。
+  if (mode) {
+    const allowedModes = await allowedModesWhenManagedForbids(mode, deps);
+    if (allowedModes) {
+      ctx.stderr.write(
+        `--mode ${mode} is disabled by the organization's managed policy. Allowed modes: ${allowedModes.join(", ")}.\n`,
+      );
+      return 1;
+    }
+  }
 
   try {
     browserUse = normalizeBrowserUse(parsed.values["browser-use"] as string | undefined);
@@ -633,6 +664,17 @@ export const run = async (ctx: RunContext, deps: RunDependencies = {}): Promise<
   }
 
   if (typeof parsed.values.prompt === "string") {
+    // --prompt 默认以 yolo 运行。策略不允许它、调用方又没有显式给出 --mode 时，报错退出并请对方选一个
+    // 允许的模式。不替对方悄悄换模式：无人值守时，换掉之后的执行方式同样是对方没有同意过的。
+    if (mode === undefined) {
+      const allowedModes = await allowedModesWhenManagedForbids(DEFAULT_HEADLESS_PROMPT_MODE, deps);
+      if (allowedModes) {
+        ctx.stderr.write(
+          `--prompt runs in ${DEFAULT_HEADLESS_PROMPT_MODE} mode by default, which is disabled by the organization's managed policy. Pass --mode with one of: ${allowedModes.join(", ")}.\n`,
+        );
+        return 1;
+      }
+    }
     return await runPrompt(
       ctx,
       parsed.values.prompt,

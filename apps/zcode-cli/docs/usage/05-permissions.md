@@ -26,6 +26,34 @@ allow + Hook 阻断 → 工具失败
 
 这张图说明用户可观察的结果，不代表内部每个检查的严格调用顺序。细节以[权限服务](../../packages/core/src/permission/service.ts)及工具执行器为准。
 
+## 企业受管策略（ZCode-EE）
+
+企业版里，管理员可以在一台机器上放置一个受管策略文件。它对这台机器上全部 ZCode 运行时生效，与当前模式无关。**没有这个文件时，行为与开源版相同。** 设计与边界见[受管策略规格](../design/v2/enterprise-managed-policy.md)。
+
+文件位置由管理员写入，ZCode 只读：
+
+| 平台    | 路径                                                   |
+| ------- | ------------------------------------------------------ |
+| macOS   | `/Library/Application Support/ZCode/managed-config.json` |
+| Linux   | `/etc/zcode/managed-config.json`                       |
+| Windows | `%ProgramData%\ZCode\managed-config.json`               |
+
+```json
+{
+  "version": 1,
+  "permission": {
+    "disallowedTools": ["WebFetch"],
+    "allowedModes": ["build", "plan"]
+  }
+}
+```
+
+- **`disallowedTools`**：按工具名禁用整个工具。被禁用的工具在任何模式下都被拒绝，包括 `yolo` 与 `guarded`；结果是拒绝而不是询问，项目 allow 规则、会话授权和 Hook 的 allow 都解除不了。
+- **`allowedModes`**：限定可用的模式。会话处在列表之外的模式时，工具调用按回退模式判定：优先 `build`，否则是列表里最严格的那个。启动时的初始模式会被换成回退模式并在日志里告警。CLI 的 `--mode` 取了不被允许的值会直接报错；`--prompt` 没写 `--mode`、而它默认的 `yolo` 不被允许时同样报错，不会悄悄换成别的模式去执行。
+- 文件内容无效时，ZCode 拒绝启动并指出文件路径与原因。写了不认识的键只是被忽略，并在日志里告警。
+
+受管策略只做收紧，不能放开在别处被禁用的工具。它不是沙箱：拥有管理员权限的用户可以移除或改写这个文件。策略的下发与签名校验不在本文档范围内。
+
 ## 验证权限
 
 用一次性目录测试 Read、Write 和 Bash。对普通内置文件工具，plan 应拒绝写入，edit 可写文件；build 的写入审批在无客户端的 prompt 中可能失败。使用自定义工具、插件或 MCP 时，须分别验证其能力声明和权限规则。

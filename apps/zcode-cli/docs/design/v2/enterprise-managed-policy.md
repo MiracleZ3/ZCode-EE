@@ -1,8 +1,7 @@
-# 企业受管策略：受管配置作用域
+# 企业受管策略：受管配置作用域与权限判定顺序
 
-> 状态：T1 已实现并经自动化测试验证（2026-11-24）；两条人工验证尚未执行，见末尾的验证记录。T3（权限判定顺序、模式约束）的规则也写在这里，它的实现随后提交。
-> 对应企业版改造点 T1（受管配置作用域）与 T3（权限判定顺序、`--mode` 取值受策略约束）。改造点编号见企业版方案文档 6.2 节，索引见 [docs/ee/README.md](../../../../docs/ee/README.md)。
-> 本规格只覆盖 Agent 运行时（CLI 与 app-server）。设置界面的只读展示（T2）另见 T2 规格；策略的拉取、验签与写入（T6）不在此列。
+> 状态：已实现并经自动化测试验证（2026-11-24）；两条人工验证尚未执行，见末尾的验证记录。对应企业版改造点 T1（受管配置作用域）与 T3（权限判定顺序、`--mode` 取值受策略约束）。改造点编号见企业版方案文档 6.2 节。
+> 本规格只覆盖 Agent 运行时（CLI 与 app-server）。设置界面的只读展示（T2）另见 T2 规格；策略的拉取、验签与写入（T6）不在此列。改造点索引见 [docs/ee/README.md](../../../../docs/ee/README.md)。
 
 ## 背景
 
@@ -99,11 +98,13 @@
 ```ts
 managed:
   | { status: "absent" }
-  | { status: "active"; path: string; policy: ManagedPolicy; unknownKeys: readonly string[] }
+  | { status: "active"; path: string; policy: ManagedPolicy }
   | { status: "invalid"; path: string; reason: string };
 ```
 
-每次 `createConfig` 调用同步读一次，不缓存，与其他来源一致。`createConfig` 自身不因无效文件抛错——它有三十多处调用，其中一些只需要默认的存储目录。拒绝启动发生在创建应用的那一步（`assertManagedPolicyUsable`），并且排在任何会话、模型或存储被初始化之前。
+每次 `createConfig` 调用同步读一次，不缓存，与其他来源一致。`createConfig` 自身不因无效文件抛错——它有三十多处调用，其中一些只需要默认的存储目录。拒绝启动发生在创建应用的那一步。
+
+导出一个轻量的读取函数给 CLI 的参数校验使用，避免为此装配整份配置。
 
 ## 判定顺序
 
@@ -124,7 +125,6 @@ managed:
 
 ## 启动处的执行
 
-- **受管文件无效**：创建应用时拒绝启动（T1，本提交）。
 - **默认模式**：`resolveAppRuntimeConfig` 解析出的模式（宿主传入 → 项目偏好 → 配置）若不在允许列表里，换成回退模式，并记一条警告。
 - **CLI `--mode`**：取值不被允许时报错退出，说明它被组织禁用。**`--prompt` 的默认模式是 `yolo`**：`yolo` 不被允许且调用方没有显式给出 `--mode` 时同样报错退出，提示改为指定一个允许的模式，而不是悄悄换成别的模式去执行。
 - **项目记忆代理**：沿用主运行时的受管策略，不再使用无限制的默认配置。
@@ -157,37 +157,47 @@ CLI 测试（各包自己的测试套件）：
 - CLI：以 `yolo` 启动，受管文件禁用某个工具，实际调用它，确认被拒绝且提示来自组织策略；删掉受管文件后同一操作恢复上游行为。
 - 桌面：由 T2 的 E2E 覆盖界面的只读表现；本规格在桌面形态下的效果是“会话即便处于被禁模式也不放宽”，在 T2 的用例里一并验证，或另行记录。
 
-## 验证记录（2026-11-24，T1）
+## 验证记录（2026-11-24）
 
-环境：macOS，Node 24.14.0，上游 `a4b44451` 加本提交。每个测试都先写、确认在实现之前失败，再实现到通过。
-
-**已由本提交满足的验收项**：1–8、16，第 14 条里“模式不受限制”的部分由本提交的测试保证。其余各项（9–13、14 里受限的部分、15、17、18）属于 T3，随它的提交验证。
+环境：macOS，Node 24.14.0，上游 `a4b44451` 加本规格的改动。每个测试都先写、确认在实现之前失败，再实现到通过。
 
 **测试**
 
 | 包 | 范围 | 结果 |
 | --- | --- | --- |
-| contracts | `managed-policy`（T1 的 2 个）、全包 | 全包 347 个通过 |
-| adapters | `managed-config`（26）、`config` | 106 个通过 |
-| bootstrap | `managed-policy-app`（T1 的 4 个）、`runtime-config` | 47 个通过 |
+| contracts | 全包 | 45 个文件、352 个通过（含本规格的 7 个） |
+| adapters | `managed-config`、`config` | 106 个通过（含本规格的 26 个）。整包的失败仍只有 `mcp.test.ts` 与 `preinstalled-tools.test.ts`，与上游相同 |
+| core | `permission-managed-policy`、`permission-service` | 91 个通过（含本规格的 19 个） |
+| bootstrap | `managed-policy-app`、`runtime-config` | 53 个通过（含本规格的 10 个） |
+| cli | `cli.unit.test.ts` 中本规格的 3 个 | 3 个通过 |
 
 **类型检查与 Lint**
 
 - CLI 工作区的 `turbo run typecheck`：34 个任务全部通过。`pnpm --dir apps/zcode-cli typecheck` 在本机跑不起来（嵌套工作区里没有装 turbo），这里用的是仓库根目录的 turbo。
-- CLI 整体 Lint：0 个错误，87 个警告，与上游相同。仓库根 `pnpm lint`：537 个警告、0 个错误，与上游基线相同。
+- CLI 整体 Lint：0 个错误。落在本规格改动文件上的 5 条警告都是上游已有的。
+- 仓库根 `pnpm lint`：537 个警告、0 个错误，与上游基线相同。
 - `pnpm architecture:check --changed`：通过。新文件 `managed-config.adapter.ts` 按现有先例登记在 `architecture-policy.yaml` 的 `exceptions` 里。
 
-**与上游对照**：adapters 整包失败的仍只有 `mcp.test.ts` 与 `preinstalled-tools.test.ts`，bootstrap 与 core 的既有失败、间歇失败见管理端的 CLI 工作区基线文档；这些都未包含在本提交的范围内，原因相同。
+**与本规格无关的既有失败**（都在未改动的代码上对照过）
 
-**人工验证**
+- adapters：`mcp.test.ts` 16 个用例、`preinstalled-tools.test.ts` 1 个。
+- core：`subagent-cold-resume.test.ts` 间歇失败。未改动时 10 次失败 3 次，带上本改动 10 次失败 2 次。
+- bootstrap：`dynamic-mcp-config.test.ts`、`session-control/standalone-tui-approval.e2e.test.ts`，未改动时三次运行都失败。
 
-与 T2 的界面验证一起做，或另行记录：
+**没有做的**
+
+- 验收第 18 条（项目记忆代理沿用受管策略）没有自动化测试：那个执行器没有现成的测试入口。改动只有一行，由类型检查保证，**未经运行时验证**。
+- 两条人工验证都**没有执行**。受管文件的默认位置要管理员权限才能写入，这次没有在系统位置放置文件。需要由有管理员权限的人按下面的步骤做。
 
 ```bash
-# 1. 放一份格式无效的受管文件（macOS；需要管理员权限），再启动 ZCode：应当拒绝启动并给出路径与原因。
+# 1. 放一份禁用 WebFetch、禁止 yolo 的受管文件（macOS；需要管理员权限）
 sudo mkdir -p "/Library/Application Support/ZCode"
-printf '%s\n' '{"version":7}' | sudo tee "/Library/Application Support/ZCode/managed-config.json"
+printf '%s\n' '{"version":1,"permission":{"disallowedTools":["WebFetch"],"allowedModes":["build","plan"]}}' \
+  | sudo tee "/Library/Application Support/ZCode/managed-config.json"
 
-# 2. 验证完移除受管文件，确认一切恢复上游行为。
+# 2. CLI：在一次性的目录里运行，让模型抓取任意网页。应当被拒绝，提示它被组织的策略禁用。
+#    再用 --mode yolo 试一次：应当在参数校验处报错退出。
+# 3. 写入格式损坏的受管文件，再启动：应当拒绝启动并给出路径与原因。
+# 4. 验证完移除受管文件，确认一切恢复上游行为。
 sudo rm "/Library/Application Support/ZCode/managed-config.json"
 ```

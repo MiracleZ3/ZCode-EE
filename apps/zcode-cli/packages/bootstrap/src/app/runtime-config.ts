@@ -1,7 +1,8 @@
 import type { ConfigResult } from "@zcode/adapters/config";
 import { GEN_UI_OUTPUT_ROOT_ENV } from "@zcode/shared/node";
 import { resolveInitialModelSelection, type ModelSelectionOptions } from "@zcode/provider";
-import { resolveBashTimeoutPolicy, type AgentProfile, type AgentRuntimeConfig } from "@zcode/core";
+import { resolveBashTimeoutPolicy, type AgentProfile, type AgentRuntimeConfig, type PermissionConfig } from "@zcode/core";
+import { createNodeLoggerFactory } from "@zcode/adapters/logging";
 import { type BuiltInSubagentModelSelectionOverrides } from "@zcode/shared";
 import {
   type CollaborationMode,
@@ -10,6 +11,7 @@ import {
   type HookMatcherConfig,
   type HooksRuntimeConfig,
   type McpConfigurationSnapshot,
+  resolveManagedPermissionMode,
 } from "@zcode/contracts";
 import { resolveDefaultEmbeddedSearchBackend } from "./embedded-search-backend.js";
 import { getProjectMemoryRoot } from "./paths.js";
@@ -107,7 +109,12 @@ export function resolveAppRuntimeConfig(input: {
     bashTimeoutPolicy:
       options.runtimeConfig?.bashTimeoutPolicy ??
       resolveBashTimeoutPolicy(options.env ?? process.env),
-    mode: options.runtimeConfig?.mode ?? persistedMode ?? configResult.config.permission.mode,
+    // 项目偏好与配置的优先级不变（宿主传入 → 项目偏好 → 配置）；受管策略不允许时换成回退模式，见下方函数。
+    mode: resolveManagedInitialMode(
+      options.runtimeConfig?.mode ?? persistedMode ?? configResult.config.permission.mode,
+      configResult,
+      options,
+    ),
     modelSelection: initialModelSelection,
     // 仅接受显式传入的会话级工具面（ZCode Protocol session/create 或 CLI
     // --allowed-tools/--disallowed-tools）。不要从 config.permission.allowedTools
@@ -175,7 +182,7 @@ export function resolveAppRuntimeConfig(input: {
 }
 
 // ---------------------------------------------------------------------------
-// 企业受管策略（改造点 T1）。规格见 docs/design/v2/enterprise-managed-policy.md。
+// 企业受管策略（改造点 T1、T3）。规格见 docs/design/v2/enterprise-managed-policy.md。
 // ---------------------------------------------------------------------------
 
 /**
@@ -196,6 +203,55 @@ export function assertManagedPolicyUsable(managed: ConfigResult["managed"]): voi
       ].join("\n"),
     );
   }
+}
+
+/**
+ * 把受管策略映射成 PermissionService 的两个受管字段。没有受管文件时什么都不加，
+ * 上游的行为因此完全不变。
+ */
+export function managedPermissionFields(
+  managed: ConfigResult["managed"],
+): Pick<PermissionConfig, "managedDisallowedTools" | "managedAllowedModes"> {
+  if (managed.status !== "active") {
+    return {};
+  }
+  const { disallowedTools, allowedModes } = managed.policy.permission;
+  return {
+    managedDisallowedTools: new Set(disallowedTools),
+    ...(allowedModes ? { managedAllowedModes: [...allowedModes] } : {}),
+  };
+}
+
+/**
+ * 会话的初始模式。受管策略不允许它时换成回退模式，并记一条警告。
+ *
+ * 保证在别处：即便模式不被允许，core 的 PermissionService 也会按回退模式判定每一次工具调用。
+ * 这里处理只为了一件更小的事——让会话一开始显示的模式就是实际生效的那个。
+ */
+function resolveManagedInitialMode(
+  requested: CollaborationMode,
+  configResult: ConfigResult,
+  options: ZCodeAppOptions,
+): CollaborationMode {
+  const managed = configResult.managed;
+  const effective = resolveManagedPermissionMode(
+    requested,
+    managed.status === "active" ? managed.policy.permission.allowedModes : undefined,
+  );
+  if (effective === requested) {
+    return requested;
+  }
+  const loggerFactory = options.loggerFactory ?? createNodeLoggerFactory({ env: options.env });
+  loggerFactory.createLogger("zcode").child({ module: "bootstrap.app" }).warn(
+    "Managed policy replaced the session mode",
+    {
+      event: "bootstrap.app.startup.managed_policy_mode_fallback",
+      requestedMode: requested,
+      effectiveMode: effective,
+      managedPolicyPath: managed.status === "active" ? managed.path : undefined,
+    },
+  );
+  return effective;
 }
 
 function withHookConfigSource(

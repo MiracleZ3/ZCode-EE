@@ -17,6 +17,7 @@ import {
   type ModelToolSideEffectScope,
   type RiskLevel,
   type ToolPermissionSpec,
+  resolveManagedPermissionMode,
 } from "@zcode/contracts";
 import { OFFICIAL_CUA_PERMISSION_RULE_TOOL_NAME } from "@zcode/shared";
 import { resolvePlanModeTransitionPermission } from "./plan-mode-policy.js";
@@ -32,6 +33,14 @@ import type { ToolPermissionRulePolicy } from "../tool/types.js";
 
 /** 草稿免确认的规则号。 */
 const WORKFLOW_DRAFT_PREAPPROVED_RULE_ID = "tool.workflowDraft.preapproved";
+
+/**
+ * 企业受管策略拒绝整个工具时的规则号（改造点 T3）。
+ * 故意用一个全新的名字：下游有按规则号字面判断是否放宽的地方，不能与任何现有的规则号撞上。
+ */
+const MANAGED_DENY_RULE_ID = "rule.managed.deny";
+
+const noManagedDisallowedTools: ReadonlySet<string> = new Set();
 
 /**
  * `disallowedTools` 拒绝整个工具时模型看到的文字（2026-11-14，原来是 `Tool X is explicitly disallowed`）。
@@ -103,10 +112,35 @@ export class PermissionService {
    */
   private sessionRules: PermissionRuleset = { version: 1 };
 
-  constructor(private config: PermissionConfig = defaultPermissionConfig) {}
+  private readonly managedDisallowedTools: ReadonlySet<string>;
+  private readonly managedAllowedModes: readonly CollaborationMode[] | undefined;
+
+  constructor(private config: PermissionConfig = defaultPermissionConfig) {
+    this.managedDisallowedTools = config.managedDisallowedTools ?? noManagedDisallowedTools;
+    this.managedAllowedModes = config.managedAllowedModes;
+  }
 
   grantSessionPermission(updates: PermissionUpdate[]): void {
     this.sessionRules = applyPermissionUpdates(this.sessionRules, updates);
+  }
+
+  /**
+   * 只带受管约束的一份配置（改造点 T3）。
+   *
+   * 给那种必须沿用组织策略、却不该继承主会话普通名单的子运行时用。它们今天用的是不带任何名单的
+   * 默认配置，这里保持这一点不变，只把管理员下发的约束带上。
+   */
+  managedOnlyConfig(): PermissionConfig {
+    return {
+      allowedTools: new Set(),
+      disallowedTools: new Set(),
+      autoApproveHighRisk: false,
+      allowMediumRiskInAutoMode: false,
+      ...(this.managedDisallowedTools.size > 0
+        ? { managedDisallowedTools: new Set(this.managedDisallowedTools) }
+        : {}),
+      ...(this.managedAllowedModes ? { managedAllowedModes: [...this.managedAllowedModes] } : {}),
+    };
   }
 
   checkPermission(
@@ -116,6 +150,26 @@ export class PermissionService {
     rulePolicy?: ToolPermissionRulePolicy,
   ): PermissionDecisionResult {
     const capability = this.resolveCapability(context, toolCapability);
+
+    // 企业受管策略（T3）。规格见 docs/design/v2/enterprise-managed-policy.md。
+    // 上游的顺序里，Plan 闸门、guarded 的危险命令确认、yolo/guarded 的放行都排在 disallowedTools
+    // 与项目 deny 之前，所以普通工具的禁用在这两个模式下完全不生效。管理员下发的禁用不能被任何
+    // 模式越过，因此放在最前面，并且结果是 deny：只有 deny 不会被项目 allow、会话授权、
+    // PreToolUse Hook 的 allow 或审批应答解除。
+    if (this.managedDisallowedTools.has(context.toolName)) {
+      return this.deny(
+        context,
+        capability,
+        MANAGED_DENY_RULE_ID,
+        `Permission to use ${context.toolName} has been denied by the organization's managed policy`,
+      );
+    }
+    // 当前模式不在受管允许列表里时，本次判定按回退模式进行。能设置模式的入口有二十多个，
+    // 但权限判定只有这一个汇合点，所以约束放在这里才对所有入口生效；下面的分支看到的都是回退模式。
+    const effectiveMode = resolveManagedPermissionMode(context.mode, this.managedAllowedModes);
+    if (effectiveMode !== context.mode) {
+      context = { ...context, mode: effectiveMode };
+    }
     const planModeTransition = resolvePlanModeTransitionPermission(context);
 
     if (planModeTransition) {
@@ -802,6 +856,13 @@ export interface PermissionConfig {
   disallowedTools: Set<string>;
   autoApproveHighRisk: boolean;
   allowMediumRiskInAutoMode: boolean;
+  /**
+   * 企业受管策略（改造点 T1、T3）：被管理员禁用的工具。先于一切模式放行与规则判定。
+   * 与上面的 disallowedTools 是两条通道——那个键在上游的语义是“yolo 下可越过”，这里不是。
+   */
+  managedDisallowedTools?: ReadonlySet<string>;
+  /** 企业受管策略：允许的权限模式。缺省表示不受限制。不在列表里的模式在判定时按回退模式处理。 */
+  managedAllowedModes?: readonly CollaborationMode[];
 }
 
 export const defaultPermissionConfig: PermissionConfig = {

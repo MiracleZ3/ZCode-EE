@@ -198,7 +198,7 @@ export interface ManagedPolicy {
     disallowedTools: readonly string[];
     /**
      * 允许的权限模式。缺省表示不受限制。
-     * 不在列表里的模式在权限判定时按回退模式处理；这是改造点 T3 的内容。
+     * 不在列表里的模式在判定时按回退模式处理，见 resolveManagedPermissionMode。
      */
     allowedModes?: readonly CollaborationMode[];
   };

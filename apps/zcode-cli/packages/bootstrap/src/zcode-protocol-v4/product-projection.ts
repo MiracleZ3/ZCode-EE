@@ -108,6 +108,7 @@ import type {
   RowActions,
   RunningSubagentSummary,
   SessionControl,
+  SessionConfigState,
   SessionUsageState,
   StatePatch,
   SubagentProjectionState,
@@ -260,6 +261,12 @@ export interface SessionConfigSeed {
   thought?: string;
   thoughtLevels?: readonly string[];
   mode?: string;
+  /**
+   * 企业受管策略（T2）：组织允许的模式，取值与协议字段 `config.managedAllowedModes` 相同
+   * （不含尚未实现的 `auto`）。没有限制时这个键的值是 `undefined`；
+   * 用 `Object.hasOwn` 区分“没有限制”和“种子没提这件事”。
+   */
+  managedAllowedModes?: SessionConfigState["managedAllowedModes"];
 }
 
 export interface SessionUsageSeed {
@@ -946,6 +953,20 @@ export class ProductProjection {
     ) {
       config.planEnabled = seed.planEnabled;
       changed = true;
+    }
+    if (Object.hasOwn(seed, "managedAllowedModes")) {
+      // 企业受管策略（T2）：它不是事件带出来的事实，重放的日志值不覆盖它，每次都以运行时为准。
+      const nextModes = seed.managedAllowedModes ? [...seed.managedAllowedModes] : undefined;
+      const currentModes = config.managedAllowedModes;
+      const same =
+        (nextModes?.length ?? 0) === (currentModes?.length ?? 0) &&
+        (nextModes ?? []).every((mode, index) => mode === currentModes?.[index]);
+      if (!same) {
+        // 没有限制时不留这个键：快照与没有企业版改动时逐字节相同。
+        if (nextModes) config.managedAllowedModes = nextModes;
+        else delete config.managedAllowedModes;
+        changed = true;
+      }
     }
     if (changed) {
       this.snapshot = { ...this.snapshot, config };

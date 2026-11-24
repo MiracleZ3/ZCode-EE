@@ -29,13 +29,14 @@ export async function drainInlineGuideForNextRequest(
 
   state.drainedSteerForNextRequest = drained;
   appendTurnRequestEntries(state.turnRequestState, drained.runtimeEntries ?? []);
-  // 固定执行模型只禁止切模，不应连带丢弃 Guide 的权限／Plan 意图。
-  if (state.modelSelectionScope === "execution" && drained.intent) {
-    await applyRuntimeExecutionState(runtime, drained.intent, {
-      source: "command",
-      traceContext: state.turnTraceContext,
-    });
-  }
+    // 固定执行模型只禁止切模，不应连带丢弃 Guide 的权限／Plan 意图。受管策略下按回退模式（T2）。
+    if (state.modelSelectionScope === "execution" && drained.intent) {
+      await applyRuntimeExecutionState(runtime, drained.intent, {
+        source: "command",
+        traceContext: state.turnTraceContext,
+        managedPolicy: "fallback",
+      });
+    }
   const guideModel =
     state.modelSelectionScope === "execution"
       ? undefined

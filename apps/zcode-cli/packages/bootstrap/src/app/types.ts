@@ -398,6 +398,16 @@ export interface ZCodeApp {
   reloadWorkspaceMcpTrust?(): Promise<void>;
   close?(): Promise<void>;
   getMode(): CollaborationMode;
+  /**
+   * 组织的受管策略允许哪些协作模式；没有限制时是 `undefined`（改造点 T2）。
+   * 协议层把它写进会话快照，界面据此决定哪些模式不可选。
+   */
+  getManagedAllowedModes?(): readonly CollaborationMode[] | undefined;
+  /**
+   * 运行时内部写死的缺省模式（群任务、独立会话控制的 build）在受管策略下该写成什么：
+   * 被禁时换成回退模式。用户显式的选择不走这里，走 `setMode`，被禁就拒绝。
+   */
+  resolveAllowedMode?(mode: CollaborationMode): CollaborationMode;
   getModel(): string;
   /** current-only 协议快照精确读取当前 Registry 模型，避免枚举整个目录。 */
   getCurrentModelOption?(): ZCodeModelOption | undefined;

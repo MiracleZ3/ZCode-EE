@@ -16,7 +16,7 @@
 | 编号 | 改造点 | 规格或设计文档 | 状态 |
 | --- | --- | --- | --- |
 | T1 | 新增受管配置作用域，优先级高于 `Cli` | [apps/zcode-cli/docs/design/v2/enterprise-managed-policy.md](../../apps/zcode-cli/docs/design/v2/enterprise-managed-policy.md) | 已实现，有自动化测试；人工验证未做 |
-| T2 | 被策略禁掉的模式在模式选择器里不可选，并标明由组织管理 | 待写。范围于 2026-11-24 由用户确定。背景：桌面设置里没有权限分区，也没有规则编辑器，权限模式按会话或按编辑器设置 | 未开始 |
+| T2 | 被策略禁掉的模式在模式选择器里不可选，并标明由组织管理 | 运行时：[apps/zcode-cli/docs/design/v2/enterprise-managed-policy.md](../../apps/zcode-cli/docs/design/v2/enterprise-managed-policy.md) 的“入口处与界面公布”；界面：[docs/ui/managed-mode-selector.md](../../docs/ui/managed-mode-selector.md) | 已实现，有自动化测试（真实应用、真实网关、真实浏览器里的组件）；桌面全链路的人工验证未做。终端界面的 `/mode` 列表与循环切换还没做，运行时的拒绝对它已经生效 |
 | T3 | 受管 deny 先于模式放行；`--mode` 取值受策略约束 | 同 T1 | 已实现，有自动化测试；人工验证未做 |
 | T4 | 企业登录适配器，CLI 与桌面共用 | 待写 | 未开始 |
 | T5 | 企业模型接入类型 | 待写。与官方“团队套餐”代码的处理方式有关，尚未定 | 未开始 |

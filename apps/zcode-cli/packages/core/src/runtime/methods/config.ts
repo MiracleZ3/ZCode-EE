@@ -28,7 +28,11 @@ import {
 import type { AgentRuntimeConfig, ActiveTurnInfo } from "../types.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import { cloneModelSelection } from "../model-selection.js";
-import { applyRuntimeExecutionState } from "../execution-state.js";
+import {
+  applyManagedPolicyToExecutionState,
+  applyRuntimeExecutionState,
+  type ManagedExecutionStatePolicy,
+} from "../execution-state.js";
 
 import { mirrorSubagentInteractionEvent } from "../../subagent/tool-event-mirror.js";
 import { orderProviderVisibleToolContracts } from "../../tool/provider-visible-order.js";
@@ -46,8 +50,13 @@ export async function setExecutionState(
   this: AgentRuntimeInternal,
   input: { mode?: string; planEnabled?: boolean },
   traceContext?: TraceContext,
+  options?: { managedPolicy?: ManagedExecutionStatePolicy },
 ): Promise<void> {
-  await applyRuntimeExecutionState(this, input, { source: "command", traceContext });
+  await applyRuntimeExecutionState(this, input, {
+    source: "command",
+    traceContext,
+    managedPolicy: options?.managedPolicy,
+  });
 }
 
 export function updateConfig(
@@ -56,7 +65,14 @@ export function updateConfig(
 ): void {
   if (patch.mode !== undefined || patch.planEnabled !== undefined) {
     const previous = resolveExecutionState(this.config);
-    const next = resolveExecutionState(patch, previous);
+    // 企业受管策略（T2）：同步写入只有运行时内部在用（工作流子运行时固定 yolo），属于缺省值，
+    // 被禁时按回退模式，不抛错。
+    const next = applyManagedPolicyToExecutionState(
+      this.permissionService,
+      previous,
+      resolveExecutionState(patch, previous),
+      "fallback",
+    );
     Object.assign(this.config, next);
     if (previous.planEnabled !== next.planEnabled)
       this.needsPlanModeExitReminder = !next.planEnabled;

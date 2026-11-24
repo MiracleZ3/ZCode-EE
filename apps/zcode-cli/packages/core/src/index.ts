@@ -129,6 +129,8 @@ export * from "./workflow/scheduler.js";
 // Permission components
 export {
   DenyPermissionBroker,
+  // 企业受管策略（T2）：显式切换到被禁模式的错误，协议层按 reasonCode 分流。
+  ManagedPolicyModeError,
   ManualPermissionBroker,
   PermissionService,
   createDenyPermissionBroker,

@@ -188,6 +188,7 @@ import {
   type ComposerSubmissionConfig,
 } from "@/v4/composer/composerSubmissionConfig.js";
 import { useDraftSessionPrewarm } from "@/v4/composer/useDraftSessionPrewarm.js";
+import { useManagedModePolicy } from "@/v4/composer/useManagedModePolicy.js";
 import { projectSessionConfigToTaskConfigOptions } from "@/v4/composer/sessionConfigTaskCache.js";
 import { useDraftRuntimeRebuildGate } from "@/v4/composer/useDraftRuntimeRebuildGate.js";
 import { useDraftModelReadinessGate } from "@/v4/composer/useDraftModelReadinessGate.js";
@@ -5299,6 +5300,15 @@ export function SessionPane({
     },
     [handleDraftSwitchMode],
   );
+  // 企业受管策略（T2）：草稿里残留的被禁模式归正成会话当前的模式，交给菜单的切换放弃被禁的模式。
+  // 事实来自当前目标会话（绑定的会话、恢复中的草稿或预热会话）的快照，不另存一份。
+  // 规格：docs/ui/managed-mode-selector.md。
+  const handlePolicyAwareSwitchMode = useManagedModePolicy({
+    snapshot,
+    expectedSessionId: effectiveSessionId,
+    composerDraft,
+    onSwitchMode: handleSwitchMode,
+  });
 
   // context usage 面板的压缩入口（命令文本 = "/compact"，复用 slash 解析路径）。
   const handleSendCompressionCommand = useCallback(
@@ -6469,7 +6479,7 @@ export function SessionPane({
       onStop={handleStopFromButton}
       onSelectModel={handleSelectModel}
       onSelectThought={handleSelectThought}
-      onSwitchMode={handleSwitchMode}
+      onSwitchMode={handlePolicyAwareSwitchMode}
       onRecoverCustomModelSelection={handleRecoverCustomModelSelection}
       onSendCompressionCommand={handleSendCompressionCommand}
       modelGuide={modelGuide}

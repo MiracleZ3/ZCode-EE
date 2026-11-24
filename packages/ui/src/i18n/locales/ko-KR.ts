@@ -6285,6 +6285,7 @@ const koKR: Record<string, string> = {
   "chat.modelSwitch.contextWindowGuard.stillTooLarge":
     "압축 후에도 이 대화가 사용한 컨텍스트가 최대 출력을 예약한 후 대상 모델에서 사용할 수 있는 컨텍스트보다 큽니다. 모델 전환이 취소되었습니다.",
   "chat.toolbar.mode.label": "모드 전환",
+  "chat.toolbar.mode.managedByOrganization": "조직에서 관리함",
   // CUA composer entry button
   "chat.toolbar.computerUse.label": "Computer Use",
   "chat.toolbar.computerUse.tooltip.idle":

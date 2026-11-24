@@ -43,10 +43,37 @@ import type { V4ComposerToolbarProps } from "@/v4/composer/V4ComposerToolbar.js"
 
 function noop(): void {}
 
+/**
+ * 一个模式在组织的受管策略下能不能选（改造点 T2）。没有受管限制时都能选，走的还是原来的路径。
+ * 规格：docs/ui/managed-mode-selector.md。
+ */
+function isModeAllowedByPolicy(mode: string, managedAllowedModes?: readonly string[]): boolean {
+  return !managedAllowedModes || managedAllowedModes.includes(mode);
+}
+
+/** 三种权限，Plan 另有独立的勾选项。目录是固定的，在模块级算一次，引用稳定。 */
+const permissionModes = getZCodeAgentAvailableModes().filter((mode) => mode.id !== "plan");
+
+/**
+ * 被禁候选的原因，写在原来的说明文字位置。
+ *
+ * 常驻可见：禁用的行收不到悬停事件，原因不能只放在悬停提示里。颜色沿用说明文字，不跟着标题一起
+ * 弱化——用户最需要读懂的恰恰是这一句。不加图标：菜单只有 256 像素宽，文字要占满这一行。
+ */
+function PolicyLockedNote() {
+  const { intl } = useZCodeIntl();
+  return (
+    <span className="text-ui-sm text-foreground-subtle">
+      {intl.formatMessage({ id: "chat.toolbar.mode.managedByOrganization" })}
+    </span>
+  );
+}
+
 /** Plan 是独立勾选项，三种权限仍为单选；只编辑草稿，不向 Runtime 发切换命令。 */
 function V4ComposerModeSwitchImpl({
   provider,
   draftConfig,
+  managedAllowedModes,
   disabled,
   activeConfigPicker,
   onConfigPickerOpenChange,
@@ -61,20 +88,27 @@ function V4ComposerModeSwitchImpl({
   | "activeConfigPicker"
   | "onConfigPickerOpenChange"
   | "onSwitchMode"
->) {
+> & {
+    /** 组织的受管策略允许哪些模式；缺省表示不受限（改造点 T2）。来自会话快照的 config。 */
+    managedAllowedModes?: readonly string[];
+  }) {
   const { intl } = useZCodeIntl();
   // 原草稿回调随 scope 换代，旧确认不能把权限写入后来选中的任务。
   const confirmMode = useYoloModeConfirmation(disabled ? null : onSwitchMode, draftConfig?.mode);
   const requestSwitchMode = useCallback(
     (mode: string) => {
+      // 被禁的候选在这里再拦一次：置灰已经挡住鼠标与键盘，这里挡住程序触发的切换
+      // （循环快捷键的候选已经排除它们，这里是保险）。
+      if (!isModeAllowedByPolicy(mode, managedAllowedModes)) return;
       confirmMode(mode, () => onSwitchMode(mode));
     },
-    [confirmMode, onSwitchMode],
+    [confirmMode, managedAllowedModes, onSwitchMode],
   );
   const displayProvider = provider ?? ZCODE_AGENT_PROVIDER;
   const modeShortcutLabel = useShortcutCommandLabel("cycleSessionMode");
   const modes = getZCodeAgentAvailableModes();
-  const permissions = modes.filter((mode) => mode.id !== "plan");
+  const permissions = permissionModes;
+  const planAllowed = isModeAllowedByPolicy("plan", managedAllowedModes);
   // 新菜单隐藏 Edit，但历史草稿仍可回显，不能因候选变化隐藏整个权限入口。
   const selected =
     permissions.find((mode) => mode.id === draftConfig?.mode) ??
@@ -85,6 +119,8 @@ function V4ComposerModeSwitchImpl({
   const planLabel = label(plan);
   // Plan 拆成独立勾选项后仍需保留原菜单说明，复用相同的国际化映射。
   const planDescriptionId = getModeOptionDescriptionMessageId(displayProvider, { value: plan.id });
+  // 菜单仍然列出被禁的候选（用户需要知道有这个模式、为什么不能用），
+  // 但循环快捷键不经过它们：这里给快捷键的候选表只含允许的权限。
   const modeOption = useMemo<ZCodeConfigOption>(
     () => ({
       id: "mode",
@@ -92,11 +128,11 @@ function V4ComposerModeSwitchImpl({
       category: "mode",
       type: "select",
       currentValue: draftConfig?.mode ?? "build",
-      options: getZCodeAgentAvailableModes()
-        .filter((mode) => mode.id !== "plan")
+      options: permissions
+        .filter((mode) => isModeAllowedByPolicy(mode.id, managedAllowedModes))
         .map((mode) => ({ value: mode.id, name: mode.name })),
     }),
-    [draftConfig?.mode],
+    [draftConfig?.mode, managedAllowedModes, permissions],
   );
   const cycle = useCallback(() => {
     const next = getNextConfigSelectValue(modeOption);
@@ -161,16 +197,20 @@ function V4ComposerModeSwitchImpl({
           <DropdownMenuCheckboxItem
             checked={draftConfig?.planEnabled ?? false}
             onCheckedChange={(checked) => onSwitchMode(checked ? "plan" : "plan-off")}
+            disabled={!planAllowed}
+            data-policy-locked={planAllowed ? undefined : "true"}
             data-testid={testId(TID_CHAT_MODE_SELECT_ITEM, "plan")}
             className="min-h-13 items-start gap-3 py-2"
           >
             <LightbulbIcon className="mt-0.5 size-4.5 shrink-0" />
             <span className="flex min-w-0 flex-col gap-0.5">
               <span>{planLabel}</span>
-              {planDescriptionId && (
-                <span className="text-ui-sm text-foreground-subtle">
-                  {intl.formatMessage({ id: planDescriptionId })}
-                </span>
+              {!planAllowed ? <PolicyLockedNote /> : (
+                planDescriptionId && (
+                  <span className="text-ui-sm text-foreground-subtle">
+                    {intl.formatMessage({ id: planDescriptionId })}
+                  </span>
+                )
               )}
             </span>
           </DropdownMenuCheckboxItem>
@@ -181,20 +221,25 @@ function V4ComposerModeSwitchImpl({
               const descriptionId = getModeOptionDescriptionMessageId(displayProvider, {
                 value: mode.id,
               });
+              const locked = !isModeAllowedByPolicy(mode.id, managedAllowedModes);
               return (
                 <DropdownMenuRadioItem
                   key={mode.id}
                   value={mode.id}
+                  disabled={locked}
+                  data-policy-locked={locked ? "true" : undefined}
                   data-testid={testId(TID_CHAT_MODE_SELECT_ITEM, mode.id)}
                   className="min-h-13 items-start gap-3 py-2"
                 >
                   <ModeIcon className="mt-0.5 size-4.5 shrink-0" />
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span>{label(mode)}</span>
-                    {descriptionId && (
-                      <span className="text-ui-sm text-foreground-subtle">
-                        {intl.formatMessage({ id: descriptionId })}
-                      </span>
+                    {locked ? <PolicyLockedNote /> : (
+                      descriptionId && (
+                        <span className="text-ui-sm text-foreground-subtle">
+                          {intl.formatMessage({ id: descriptionId })}
+                        </span>
+                      )
                     )}
                   </span>
                 </DropdownMenuRadioItem>

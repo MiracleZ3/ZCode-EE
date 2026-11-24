@@ -79,6 +79,7 @@ import type {
   TurnId,
 } from "./deps.js";
 import { installAgentRuntimeMethods } from "./methods/index.js";
+import type { ManagedExecutionStatePolicy } from "./execution-state.js";
 import type { StartSavedWorkflowRunResult } from "./methods/dynamic-workflow-run-start.js";
 import type {
   AmendWorkflowRunSettingsInput,
@@ -633,6 +634,7 @@ export interface AgentRuntime {
   setExecutionState(
     input: { mode?: string; planEnabled?: boolean },
     traceContext?: TraceContext,
+    options?: { managedPolicy?: ManagedExecutionStatePolicy },
   ): Promise<void>;
   getSessionModelSelection(): ModelSelection | undefined;
   setSessionModelSelection(selection: ModelSelection | undefined): void;

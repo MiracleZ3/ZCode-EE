@@ -454,7 +454,13 @@ describe("applyRequestedSessionConfig（createSession.config 消费）", () => {
     const app = makeApp();
     const record = makeRecord(app);
     await applyRequestedSessionConfig(makeHost(record), record, { mode: "yolo" });
-    expect(app.runtime.setExecutionState).toHaveBeenCalledWith({ mode: "yolo" }, TRACE);
+    // 企业受管策略（改造点 T2）：创建会话时带的模式是随请求携带的状态声明，被禁时按回退模式，
+    // 所以调用额外声明 managedPolicy: "fallback"。状态本身仍然由 Runtime 原子更新。
+    expect(app.runtime.setExecutionState).toHaveBeenCalledWith(
+      { mode: "yolo" },
+      TRACE,
+      { managedPolicy: "fallback" },
+    );
     expect(app.runtime.emitModeChanged).not.toHaveBeenCalled();
 
     const app2 = makeApp();

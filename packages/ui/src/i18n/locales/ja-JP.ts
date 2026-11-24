@@ -6439,6 +6439,7 @@ const jaJP: Record<string, string> = {
   "chat.modelSwitch.contextWindowGuard.stillTooLarge":
     "圧縮後も、この会話で使用しているコンテキストは、最大出力を確保した後の切り替え先モデルの利用可能なコンテキストより大きいままです。モデルの切り替えはキャンセルされました。",
   "chat.toolbar.mode.label": "モードを切り替え",
+  "chat.toolbar.mode.managedByOrganization": "組織により管理されています",
   // CUA composer entry button
   "chat.toolbar.computerUse.label": "Computer Use",
   "chat.toolbar.computerUse.tooltip.idle":

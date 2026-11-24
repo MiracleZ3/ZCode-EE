@@ -2621,3 +2621,13 @@ exceptions:
     paths:
       - apps/zcode-cli/packages/adapters/src/config/managed-config.adapter.ts
     reason: 企业版受管策略文件的只读加载与校验（apps/zcode-cli/docs/design/v2/enterprise-managed-policy.md，改造点 T1），只被同目录的 config-factory.ts 调用并经 @zcode/adapters/config 公开入口导出。不与 file-config.adapter 合并，是因为那个加载器读取时可能写盘，管理员的文件不能走它。不新增模块边界或状态 owner：受管来源的状态随每次 ConfigResult 返回，不持有；接管整个 adapters/config 目录不在本次范围内。
+  - id: ee-managed-mode-policy-hook-new-file
+    rule: unmanaged-new-file
+    paths:
+      - packages/ui/src/v4/composer/useManagedModePolicy.ts
+    reason: 企业版模式草稿在受管策略下的归正（docs/ui/managed-mode-selector.md，改造点 T2），只被 SessionPane.tsx 调用。只读会话快照里的 config.managedAllowedModes 一个字段、只改 Composer 草稿，不访问服务。不新增状态 owner：哪些模式被禁仍由运行时在会话快照里给出，这里不另存一份；接管整个 packages/ui/src/v4 目录不在本次范围内。
+  - id: ee-managed-policy-execution-state-edit
+    rule: unmanaged-new-file
+    paths:
+      - apps/zcode-cli/packages/core/src/runtime/execution-state.ts
+    reason: 上游文件（v3.15.1 引入）。企业版只在执行状态的唯一写入点上加了受管策略的判定（apps/zcode-cli/docs/design/v2/enterprise-managed-policy.md，改造点 T2），每个切换入口都必须经过这里，所以不另起模块。策略事实仍归 PermissionService，判定不新增状态 owner。接管整个 zcode-cli 模块不在本次范围内。

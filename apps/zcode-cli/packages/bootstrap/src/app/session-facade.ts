@@ -1,6 +1,7 @@
 import { updateUiLocaleInFileConfig, type ConfigResult } from "@zcode/adapters/config";
 import {
   McpResourceSubscribeUnsupportedError,
+  resolveManagedPermissionMode,
   resolveMcpToolVisibility,
   SESSION_ENTRY_MODEL_SELECTION,
   traceContextToLogContext,
@@ -56,6 +57,9 @@ type SessionFacade = Pick<
   | "cancelBackgroundTask"
   | "clearTarget"
   | "close"
+  // 企业受管策略（T2）：允许哪些模式，以及运行时内部缺省模式在策略下的写法。
+  | "getManagedAllowedModes"
+  | "resolveAllowedMode"
   | "callMcpToolForUi"
   | "getMcpAppConnectionSnapshot"
   | "waitForMcpAppConnection"
@@ -171,6 +175,12 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
     const resolved = resolveRegistryModelSelection(registry, selection);
     return resolved ? { owned: true, registry, selection: resolved } : { owned: true, registry };
   };
+  // 企业受管策略（T2）：组织允许哪些模式。与创建应用时交给 PermissionService 的是同一份策略，
+  // 这里只是把它读出来给协议层和运行时内部的缺省值用。
+  const managedAllowedModes = (): readonly CollaborationMode[] | undefined =>
+    deps.configResult.managed.status === "active"
+      ? deps.configResult.managed.policy.permission.allowedModes
+      : undefined;
 
   const readTargetWithInterruptedRunRecovery = async () => {
     const target = await deps.sessionStore.readTarget({
@@ -336,6 +346,17 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
       return await closePromise;
     },
     getMode: () => deps.runtime.getMode(),
+    getManagedAllowedModes: managedAllowedModes,
+    /**
+     * 一个运行时内部的缺省模式在受管策略下该写成什么：被禁时换成回退模式（T2）。
+     * 只给“缺省值”用——群任务、独立会话控制里写死的 build。用户显式的选择走 setMode，被禁就拒绝。
+     */
+    resolveAllowedMode: (mode: CollaborationMode) => {
+      const resolved = resolveManagedPermissionMode(mode, managedAllowedModes());
+      // 策略只允许 Plan 时没有可写的权限模式（执行状态里 Plan 是独立开关）：保留原值，
+      // 工具调用由权限判定处按 Plan 处理（T3）。
+      return resolved === "plan" && mode !== "plan" ? mode : resolved;
+    },
     getModel: () => formatLegacyRuntimeModelValue(readUserModelSelection(deps)),
     getLocale: () => currentLocale,
     getTheme: () => deps.configResult.config.ui.theme as UiThemePreference,

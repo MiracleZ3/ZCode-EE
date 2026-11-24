@@ -6768,6 +6768,8 @@ const enUS: Record<string, string> = {
   "chat.modelSwitch.contextWindowGuard.stillTooLarge":
     "After compression, the context used by this conversation is still larger than the target model's available context after reserving maximum output. Model switching was canceled.",
   "chat.toolbar.mode.label": "Switch mode",
+  // 企业受管策略禁掉的模式（改造点 T2）：写在被禁项的说明位置，常驻可见。
+  "chat.toolbar.mode.managedByOrganization": "Managed by your organization",
   // CUA composer entry button
   "chat.toolbar.computerUse.label": "Computer Use",
   "chat.toolbar.computerUse.tooltip.idle":

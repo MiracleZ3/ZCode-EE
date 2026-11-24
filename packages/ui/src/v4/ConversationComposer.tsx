@@ -2838,6 +2838,8 @@ function ConversationComposerImpl({
   // memo 捕获整个 snapshot 会让共享词法环境中的稳定发送回调也持有旧历史；只捕获展示字段。
   const workspaceHookAdmission = snapshot?.workspaceHookAdmission;
   const workspaceMcpAdmission = snapshot?.workspaceMcpAdmission;
+  // 企业受管策略（T2）：组织允许哪些模式，来自同一个快照。同样只捕获这一个字段。
+  const managedAllowedModes = snapshot?.config.managedAllowedModes;
   const leadingActionsNode = useMemo(
     () => (
       <>
@@ -2846,6 +2848,7 @@ function ConversationComposerImpl({
           workspaceIdentity={workspaceIdentity}
           provider={provider}
           draftConfig={draftConfig}
+          managedAllowedModes={managedAllowedModes}
           disabled={disabled || runtimeBlocked}
           activeConfigPicker={activeConfigPicker}
           onConfigPickerOpenChange={handleConfigPickerOpenChange}
@@ -2894,6 +2897,7 @@ function ConversationComposerImpl({
       draftConfig,
       handleConfigPickerOpenChange,
       isWebRemoteControl,
+      managedAllowedModes,
       onSwitchMode,
       provider,
       remoteSessionId,

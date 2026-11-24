@@ -246,12 +246,15 @@ export async function applyRequestedSessionConfig(
   // mode：payload.config.mode 是宽 string（schema default 兼容），值域在此收口。
   const mode = config.mode;
   if ((mode && SWITCHABLE_MODES.has(mode)) || config.planEnabled !== undefined) {
+    // 企业受管策略（T2）：创建会话时带的模式是随请求携带的状态声明，不是一次切换。被禁时按回退
+    // 模式，规则与每条输入自带的模式相同（TUI 菜单与协议命令的显式切换才会被拒绝）。
     await record.app.runtime.setExecutionState(
       {
         ...(mode && SWITCHABLE_MODES.has(mode) ? { mode } : {}),
         ...(config.planEnabled !== undefined ? { planEnabled: config.planEnabled } : {}),
       },
       record.traceContext,
+      { managedPolicy: "fallback" },
     );
   }
 

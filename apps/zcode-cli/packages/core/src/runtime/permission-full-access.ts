@@ -7,7 +7,11 @@ import {
   type SessionModeChangedPayload,
 } from "@zcode/contracts";
 import type { AgentRuntimeInternal } from "./internal.js";
-import { buildExecutionStateEntry, readRuntimeExecutionState } from "./execution-state.js";
+import {
+  applyManagedPolicyToExecutionState,
+  buildExecutionStateEntry,
+  readRuntimeExecutionState,
+} from "./execution-state.js";
 import { getPendingSessionPersistence } from "./methods/events.js";
 import {
   unpublishedPermissionGrants,
@@ -23,6 +27,15 @@ export async function grantPermissionMode(
   mode: "guarded" | "yolo",
   signal?: AbortSignal,
 ): Promise<string> {
+  // 企业受管策略（T2）：“放行并切换”是一次显式的切换。被禁的模式在任何落盘之前拒绝，
+  // 否则会话带着被禁的模式继续跑，只能靠判定处按回退模式兜底。见 applyManagedPolicyToExecutionState。
+  const current = readRuntimeExecutionState(this);
+  applyManagedPolicyToExecutionState(
+    this.permissionService,
+    current,
+    { ...current, mode },
+    "reject",
+  );
   if (!this.sessionStore?.commitPermissionFullAccess) throw new Error("Full access is unsupported");
   if (
     this.permissionFullAccessPending ||

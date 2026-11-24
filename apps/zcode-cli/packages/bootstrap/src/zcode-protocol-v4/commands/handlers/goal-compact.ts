@@ -357,9 +357,12 @@ export async function applyGoalCommand(
         "guard.planGoalMutuallyExclusive",
         "Plan and Goal cannot be active at the same time.",
       );
+    // 目标在提交时冻结了模式（T2）：策略生效后恢复旧目标，它带着的可能是被禁的模式。
+    // 这里按回退模式，否则旧目标既跑不动也压缩不了。
     await record.app.runtime.setExecutionState(
       { mode: params.intent.mode, planEnabled: false },
       record.traceContext,
+      { managedPolicy: "fallback" },
     );
   }
   await record.app.setTarget({

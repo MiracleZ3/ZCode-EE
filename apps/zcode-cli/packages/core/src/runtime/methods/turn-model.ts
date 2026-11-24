@@ -170,7 +170,13 @@ export async function applySubmissionExecutionState(
   }
 
   if (intent?.mode !== undefined || intent?.planEnabled !== undefined) {
-    await applyRuntimeExecutionState(runtime, intent, { source: "command", traceContext });
+    // 企业受管策略（T2）：输入自带的模式是随请求携带的状态声明，不是一次切换。被禁时按回退模式，
+    // 输入本身照常执行——恢复一个旧目标时它每一轮都带着提交时冻结的模式，拒绝会让目标卡死。
+    await applyRuntimeExecutionState(
+      runtime,
+      intent,
+      { source: "command", traceContext, managedPolicy: "fallback" },
+    );
   }
 
   return model;

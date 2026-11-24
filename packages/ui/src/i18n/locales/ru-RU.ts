@@ -6418,6 +6418,7 @@ const ruRU: Record<string, string> = {
   "chat.modelSwitch.contextWindowGuard.stillTooLarge":
     "После сжатия контекст этого диалога всё ещё больше доступного контекста целевой модели с учётом резерва на максимальный вывод. Переключение модели отменено.",
   "chat.toolbar.mode.label": "Сменить режим",
+  "chat.toolbar.mode.managedByOrganization": "Управляется организацией",
   // CUA composer entry button
   "chat.toolbar.computerUse.label": "Computer Use",
   "chat.toolbar.computerUse.tooltip.idle":

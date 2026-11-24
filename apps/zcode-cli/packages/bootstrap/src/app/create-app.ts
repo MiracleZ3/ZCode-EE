@@ -369,6 +369,10 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
             env: options.env,
             skipUserConfig: options.skipUserConfig,
             userConfigPath: options.userConfigPath,
+            // 修复原因（T2）：独立会话控制新建的根应用没有带上调用方指定的受管文件路径，它读的是
+            // 系统默认位置。生产环境两者相同，只影响按程序指定路径的调用方（测试、嵌入方、T6 的宿主）：
+            // 它指定的策略对这些会话不生效。受管文件对所有会话生效，路径必须一并转交。
+            ...(options.managedConfigPath ? { managedConfigPath: options.managedConfigPath } : {}),
             version: options.version,
             runtimeConfig: {
               workingDirectory: request.cwd,

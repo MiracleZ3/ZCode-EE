@@ -1324,7 +1324,10 @@ export function createConversationV4Gateway(
           id: created.sessionId as SessionId,
           permission: { version: 1, scope: "session", mode: "build" },
         });
-        await record.app.runtime.setExecutionState({ mode: "build" }, record.traceContext);
+        // 写死的 build 是运行时内部的缺省值（T2）：受管策略不允许 build 时按回退模式。
+        await record.app.runtime.setExecutionState({ mode: "build" }, record.traceContext, {
+          managedPolicy: "fallback",
+        });
         record.persistence = "immediate";
       }
       return { sessionId: created.sessionId };
@@ -1848,6 +1851,7 @@ export function createConversationV4Gateway(
       if (!record) return null;
       const selection =
         record.app.runtime.getSessionModelSelection() ?? record.restoredModelSelection;
+      const allowedModes = record.app.getManagedAllowedModes?.();
       return {
         modelSelection: cloneModelSelection(selection),
         provider: selection?.providerId ?? "",
@@ -1867,6 +1871,11 @@ export function createConversationV4Gateway(
         planEnabled: record.app.runtime.getPlanEnabled(),
         ...(record.app.runtime.lastPermissionGrantId
           ? { permissionGrant: { interactionId: record.app.runtime.lastPermissionGrantId } }
+          : {}),
+        // 企业受管策略（T2）：把这个会话允许的模式告诉界面。没有限制时不带这个键，
+        // 种子的形状与没有企业版改动时相同。协议的取值不含尚未实现的 auto，这里收窄。
+        ...(allowedModes && allowedModes.length > 0
+          ? { managedAllowedModes: allowedModes.filter((mode) => mode !== "auto") }
           : {}),
       };
     },

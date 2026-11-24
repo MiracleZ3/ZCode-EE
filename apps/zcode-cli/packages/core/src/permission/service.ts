@@ -43,6 +43,29 @@ const MANAGED_DENY_RULE_ID = "rule.managed.deny";
 const noManagedDisallowedTools: ReadonlySet<string> = new Set();
 
 /**
+ * 用户显式要求进入一个被组织的受管策略禁掉的模式或 Plan（改造点 T2）。
+ *
+ * 带 `reasonCode`：v4 网关把带 reasonCode 的领域错误原样放进失败的 ACK，客户端才能按码分流；
+ * 其余调用方（TUI、旧协议）直接显示消息。
+ */
+export class ManagedPolicyModeError extends Error {
+  readonly reasonCode = "policy.managedModeDisabled";
+
+  constructor(
+    readonly mode: CollaborationMode,
+    readonly allowedModes: readonly CollaborationMode[],
+  ) {
+    const allowed = allowedModes.join(", ");
+    super(
+      mode === "plan"
+        ? `Plan mode is disabled by the organization's managed policy. Allowed modes: ${allowed}.`
+        : `Mode '${mode}' is disabled by the organization's managed policy. Allowed modes: ${allowed}.`,
+    );
+    this.name = "ManagedPolicyModeError";
+  }
+}
+
+/**
  * `disallowedTools` 拒绝整个工具时模型看到的文字（2026-11-14，原来是 `Tool X is explicitly disallowed`）。
  * 项目权限规则的拒绝可能只针对部分输入（路径、命令），文字不变，不能说成整个工具被拒绝。
  */
@@ -118,6 +141,15 @@ export class PermissionService {
   constructor(private config: PermissionConfig = defaultPermissionConfig) {
     this.managedDisallowedTools = config.managedDisallowedTools ?? noManagedDisallowedTools;
     this.managedAllowedModes = config.managedAllowedModes;
+  }
+
+  /**
+   * 组织的受管策略允许哪些协作模式；没有限制时是 `undefined`（改造点 T2）。
+   *
+   * 执行状态的写入点与协议层都从这里读同一个事实，不各自再去解析受管文件。
+   */
+  allowedModes(): readonly CollaborationMode[] | undefined {
+    return this.managedAllowedModes;
   }
 
   grantSessionPermission(updates: PermissionUpdate[]): void {

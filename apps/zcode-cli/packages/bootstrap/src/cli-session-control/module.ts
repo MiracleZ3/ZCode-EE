@@ -532,7 +532,8 @@ export function createCliSessionControlRuntime(
               const root = attach(app, true);
               assertOpen();
               // 新根采用独立安全模式；不从 actor 继承 yolo 或审批。
-              await app.setMode("build");
+              // build 是运行时内部的缺省值：受管策略不允许它时换成回退模式（T2），而不是让新根建不出来。
+              await app.setMode(app.resolveAllowedMode ? app.resolveAllowedMode("build") : "build");
               await app.runtime.ensureSessionPersistedForExternalActivity(input.prompt, {
                 traceContext: trace(ctx, sessionId),
               });
@@ -702,8 +703,8 @@ export function createCliSessionControlRuntime(
               const root = attach(app, true);
               assertOpen();
               await app.resume({ traceContext: trace(ctx, childId) });
-              // 历史模型属于 fork 点；权限模式不沿 actor/fork 的旧 yolo 扩散。
-              await app.setMode("build");
+              // 历史模型属于 fork 点；权限模式不沿 actor/fork 的旧 yolo 扩散。缺省值同样服从受管策略（T2）。
+              await app.setMode(app.resolveAllowedMode ? app.resolveAllowedMode("build") : "build");
               root.prepared = true;
               return {
                 requestId: input.requestId,
